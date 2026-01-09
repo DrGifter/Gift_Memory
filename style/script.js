@@ -68,10 +68,34 @@ document.addEventListener('DOMContentLoaded', () => {
     const bgMusic = document.getElementById('bgMusic');
     let musicStarted = false;
 
+    // --- Music Unlock Logic (Mobile Robustness) ---
+    const attemptPlayMusic = () => {
+        if (!musicStarted) {
+            bgMusic.play().then(() => {
+                musicStarted = true;
+                // Once started, remove global listeners to save resources
+                ['click', 'touchstart', 'touchend', 'mousemove', 'keydown'].forEach(evt =>
+                    document.removeEventListener(evt, attemptPlayMusic)
+                );
+            }).catch(err => {
+                // Squelch the error in console to avoid annoying user, just retry next time
+                // console.log("Auto-play prevented, waiting for next interaction");
+            });
+        }
+    };
+
+    // Try to play on ANY interaction
+    ['click', 'touchstart', 'touchend', 'mousemove', 'keydown'].forEach(evt =>
+        document.addEventListener(evt, attemptPlayMusic, { passive: false })
+    );
+
     const onStart = (e) => {
         isDragging = true;
         startX = e.type.includes('mouse') ? e.pageX : e.touches[0].pageX;
         slider.style.transition = 'none';
+
+        // Also try to play specifically on slider touch
+        attemptPlayMusic();
     };
 
     const onMove = (e) => {
@@ -79,11 +103,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const x = e.type.includes('mouse') ? e.pageX : e.touches[0].pageX;
         const diff = x - startX;
 
-        // Start music as they slide left
-        if (!musicStarted && diff < -5) {
-            bgMusic.play().catch(err => console.log("Music play blocked:", err));
-            musicStarted = true;
-        }
+        // Music logic handled by attemptPlayMusic globally
 
         let targetX = isOpen ? -slider.offsetWidth + diff : diff;
 
@@ -96,6 +116,9 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const onEnd = () => {
+        // Retry music on release (often more reliable than touchstart)
+        attemptPlayMusic();
+
         if (!isDragging) return;
         isDragging = false;
         slider.style.transition = 'transform 0.5s cubic-bezier(0.165, 0.84, 0.44, 1)';
@@ -128,13 +151,14 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     slider.addEventListener('mousedown', onStart);
-    slider.addEventListener('touchstart', onStart, { passive: true });
+    slider.addEventListener('touchstart', onStart, { passive: false });
     window.addEventListener('mousemove', onMove);
     window.addEventListener('touchmove', onMove, { passive: false });
     window.addEventListener('mouseup', onEnd);
     window.addEventListener('touchend', onEnd);
 
     window.enterDigit = (digit) => {
+        attemptPlayMusic(); // Also try to play when typing password
         if (currentPasscode.length < 4) {
             currentPasscode += digit;
             updateDots();
